@@ -1,4 +1,203 @@
-function handleAuthAction() {
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TMC - RetroNet Unified Workspace (Win Flat 8 Edition)</title>
+    <!-- Firebase SDK (Auth & Firestore) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+        body { background-color: #e5edf5; color: #1d1d1d; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+        /* Górny pasek w stylu Win Flat 8 / Google Meet */
+        header { background: #001f3f; color: #ffffff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #0074D7; z-index: 100; }
+        .header-brand { font-weight: 600; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+        
+        .user-panel { display: flex; align-items: center; gap: 15px; font-size: 13px; }
+        .user-badge-flat { background: #0074D7; color: white; padding: 6px 12px; font-weight: 600; }
+        .win8-btn { background: #2ecc71; border: none; color: white; padding: 8px 16px; cursor: pointer; font-weight: 600; transition: background 0.1s; }
+        .win8-btn:hover { background: #27ae60; }
+        .win8-btn.danger { background: #e74c3c; }
+        .win8-btn.danger:hover { background: #c0392b; }
+
+        /* Główny obszar roboczy */
+        .tmc-workspace { display: flex; flex: 1; overflow: hidden; background: #ffffff; padding: 20px; gap: 20px; }
+
+        /* Panel boczny TMC */
+        .tmc-sidebar { width: 380px; display: flex; flex-direction: column; gap: 15px; background: #f0f4f8; border: 2px solid #0074D7; padding: 20px; }
+        .sidebar-title { font-size: 16px; font-weight: 600; color: #001f3f; border-bottom: 2px solid #0074D7; padding-bottom: 8px; text-transform: uppercase; }
+
+        .win8-input-group { display: flex; flex-direction: column; gap: 6px; }
+        .win8-input-group label { font-size: 12px; font-weight: 600; color: #333; }
+        .win8-input { width: 100%; padding: 10px 12px; border: 2px solid #7f8c8d; font-size: 14px; outline: none; background: #fff; }
+        .win8-input:focus { border-color: #0074D7; }
+
+        .status-box { background: #ffffff; border: 2px solid #b0c4de; padding: 12px; font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+        .status-row { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+        .status-dot { width: 8px; height: 8px; background: #e74c3c; }
+        .status-dot.active { background: #2ecc71; }
+
+        /* Scena Wideo (Google Meet style wewnątrz jednej strony) */
+        .tmc-meet-main { flex: 1; display: none; flex-direction: column; background: #111; border: 2px solid #0074D7; position: relative; overflow: hidden; }
+        .meet-stage { flex: 1; position: relative; display: flex; justify-content: center; align-items: center; background: #1a1a1a; overflow: hidden; }
+        #remote-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+        
+        .local-pip-container {
+            position: absolute; bottom: 24px; right: 24px; width: 220px; height: 124px;
+            background: #222; border: 2px solid #0074D7; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            display: flex; justify-content: center; align-items: center; overflow: hidden; z-index: 5;
+        }
+        #local-video { width: 100%; height: 100%; object-fit: cover; }
+        .pip-label { position: absolute; bottom: 4px; left: 6px; background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; padding: 2px 6px; font-weight: 600; }
+
+        .meet-control-bar { height: 70px; background: #001f3f; display: flex; justify-content: center; align-items: center; gap: 20px; border-top: 3px solid #0074D7; z-index: 10; }
+        .meet-ctrl-btn { background: #334155; border: none; width: 44px; height: 44px; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 16px; color: #fff; }
+        .meet-ctrl-btn:hover { background: #475569; }
+        .meet-ctrl-btn.hangup { background: #e74c3c; }
+
+        /* Widok domyślny centrali */
+        .default-content-area { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #f8f9fa; border: 2px solid #b0c4de; padding: 40px; text-align: center; color: #555; gap: 10px; }
+
+        /* Nakładka logowania / rejestracji */
+        #auth-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 31, 63, 0.9); display: flex; justify-content: center; align-items: center; z-index: 3000; }
+        .win8-auth-card { background: #ffffff; width: 420px; border: 3px solid #0074D7; padding: 30px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+        .card-title { font-size: 20px; font-weight: 600; color: #001f3f; text-transform: uppercase; border-bottom: 2px solid #0074D7; padding-bottom: 8px; }
+        .auth-toggle { font-size: 12px; color: #0074D7; cursor: pointer; text-align: center; margin-top: 5px; font-weight: 600; }
+        .auth-toggle:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+    <!-- Panel logowania / rejestracji TMC z ID konta -->
+    <div id="auth-overlay" style="display: none;">
+        <div class="win8-auth-card">
+            <div class="card-title" id="auth-modal-title">Logowanie TMC</div>
+            <div style="font-size: 13px; color: #555;" id="auth-modal-subtitle">Wpisz swoją nazwę konta (np. karol).</div>
+            
+            <div class="win8-input-group">
+                <label>Nazwa konta:</label>
+                <input type="text" id="auth-username" class="win8-input" placeholder="np. karol">
+            </div>
+            <div class="win8-input-group">
+                <label>Hasło:</label>
+                <input type="password" id="auth-password" class="win8-input" placeholder="Hasło">
+            </div>
+
+            <button class="win8-btn" style="padding: 12px; margin-top: 5px;" onclick="handleAuthAction()" id="auth-submit-btn">Zaloguj się</button>
+            <div class="auth-toggle" onclick="toggleAuthMode()" id="auth-mode-toggle">Nie masz konta? Zarejestruj się</div>
+            <div id="auth-err" style="color: #e74c3c; font-size: 12px; font-weight: 600; text-align: center;"></div>
+        </div>
+    </div>
+
+    <!-- Górny Pasek -->
+    <header>
+        <div class="header-brand">
+            <span>TMC Unified Workspace (RetroNet)</span>
+        </div>
+        <div class="user-panel">
+            <span class="user-badge-flat" id="top-user-display">Ładowanie...</span>
+            <button class="win8-btn danger" onclick="logoutUser()">Wyloguj</button>
+        </div>
+    </header>
+
+    <!-- Główny Układ -->
+    <div class="tmc-workspace">
+        <!-- Panel boczny TMC -->
+        <div class="tmc-sidebar">
+            <div class="sidebar-title">Centrala Kontaktów</div>
+            
+            <div class="status-box">
+                <div class="status-row">
+                    <div class="status-dot" id="net-status-dot"></div>
+                    <span id="net-status-label">Inicjalizacja węzła...</span>
+                </div>
+                <div>Twój identyfikator:</div>
+                <div id="my-call-info" style="font-family: monospace; font-size: 11px; color: #0074D7; word-break: break-all; background: #fff; padding: 6px; border: 1px solid #ccc;">...</div>
+            </div>
+
+            <div class="win8-input-group">
+                <label>Wprowadź nazwę lub e-mail odbiorcy:</label>
+                <input type="text" id="target-name-input" class="win8-input" placeholder="np. karol lub karol@retronet.call">
+            </div>
+
+            <button class="win8-btn" onclick="startCallSession()" style="padding: 12px; font-size: 14px;">Rozpocznij Strumień Wideo</button>
+        </div>
+
+        <!-- Domyślny widok centrali -->
+        <div class="default-content-area" id="default-view">
+            <h2 style="color: #001f3f; font-weight: 600;">Witaj w ekosystemie TMC</h2>
+            <p>Wprowadź nazwę użytkownika w panelu po lewej stronie, aby nawiązać bezpośrednie połączenie wideo.</p>
+        </div>
+
+        <!-- Scena Wideo (Google Meet style) -->
+        <div class="tmc-meet-main" id="meet-view">
+            <div class="meet-stage">
+                <video id="remote-video" autoplay playsinline></video>
+                <div class="local-pip-container">
+                    <video id="local-video" autoplay muted playsinline></video>
+                    <div class="pip-label">Ty (Lokalny)</div>
+                </div>
+            </div>
+            <div class="meet-control-bar">
+                <button class="meet-ctrl-btn" title="Wycisz mikrofon" onclick="toggleAudio()" id="mic-btn">🎤</button>
+                <button class="meet-ctrl-btn" title="Kamera" onclick="toggleVideo()" id="cam-btn">📹</button>
+                <button class="meet-ctrl-btn hangup" title="Rozłącz" onclick="endCallSession()">📞</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const apiConfig = {
+            apiKey: "AIzaSyB7Q9TSXa4CQc2nSiUhS044wD463jBHpr0",
+            authDomain: "retronetcall.firebaseapp.com",
+            projectId: "retronetcall",
+            storageBucket: "retronetcall.firebasestorage.app",
+            messagingSenderId: "820407833858",
+            appId: "1:820407833858:web:e4e1cc71f364955b3bde1b"
+        };
+
+        const SUFFIX = "@retronet.call";
+        let auth, db;
+        let currentUser = null;
+        let isRegisterMode = false;
+        let localStream = null;
+        let pc = null;
+
+        const rtcConfig = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!firebase.apps.length) firebase.initializeApp(apiConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+            auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+
+            auth.onAuthStateChanged(async (user) => {
+                if (user) {
+                    await setupUserSession(user);
+                } else {
+                    document.getElementById('auth-overlay').style.display = 'flex';
+                }
+            });
+        });
+
+        function toggleAuthMode() {
+            isRegisterMode = !isRegisterMode;
+            document.getElementById('auth-modal-title').innerText = isRegisterMode ? "Rejestracja TMC" : "Logowanie TMC";
+            document.getElementById('auth-modal-subtitle').innerText = isRegisterMode ? "Utwórz nowe konto w sieci TMC." : "Wpisz swoją nazwę konta.";
+            document.getElementById('auth-submit-btn').innerText = isRegisterMode ? "Zarejestruj się" : "Zaloguj się";
+            document.getElementById('auth-mode-toggle').innerText = isRegisterMode ? "Masz już konto? Zaloguj się" : "Nie masz konta? Zarejestruj się";
+            document.getElementById('auth-err').innerText = "";
+        }
+
+        function handleAuthAction() {
             const raw = document.getElementById('auth-username').value.trim().toLowerCase();
             const pass = document.getElementById('auth-password').value;
             const err = document.getElementById('auth-err');
@@ -9,7 +208,7 @@ function handleAuthAction() {
 
             if (isRegisterMode) {
                 auth.createUserWithEmailAndPassword(email, pass).catch(e => {
-                    console.error("Firebase Auth Register Error:", e.code, e.message);
+                    console.error("Auth Register Error:", e.code, e.message);
                     if (e.code === 'auth/email-already-in-use') {
                         auth.signInWithEmailAndPassword(email, pass).catch(errLogin => {
                             err.innerText = "Błąd logowania: " + errLogin.message;
@@ -20,7 +219,7 @@ function handleAuthAction() {
                 });
             } else {
                 auth.signInWithEmailAndPassword(email, pass).catch(e => {
-                    console.error("Firebase Auth Login Error:", e.code, e.message);
+                    console.error("Auth Login Error:", e.code, e.message);
                     if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
                         auth.createUserWithEmailAndPassword(email, pass).catch(errCreate => {
                             err.innerText = "Błąd tworzenia konta: " + errCreate.message;
@@ -30,6 +229,12 @@ function handleAuthAction() {
                     }
                 });
             }
+        }
+
+        function logoutUser() {
+            auth.signOut().then(() => {
+                document.getElementById('auth-overlay').style.display = 'flex';
+            });
         }
 
         async function setupUserSession(user) {
@@ -64,11 +269,69 @@ function handleAuthAction() {
                 document.getElementById('net-status-dot').classList.add('active');
                 document.getElementById('net-status-label').innerText = `Węzeł TMC aktywny`;
             } catch (firestoreErr) {
-                console.error("Firestore Database Error during session setup:", firestoreErr);
-                // Awaryjne przypisanie lokalne, gdyby reguły Firestore blokowały licznik
+                console.error("Firestore Error (Fallback mode):", firestoreErr);
                 currentUser = { email: email, retroId: "1001" };
                 document.getElementById('top-user-display').innerText = `${email} [ID: 1001]`;
                 document.getElementById('auth-overlay').style.display = 'none';
+                document.getElementById('net-status-dot').classList.add('active');
+                document.getElementById('my-call-info').innerText = `${email} (ID: 1001)`;
                 document.getElementById('net-status-label').innerText = `Węzeł TMC (Tryb Awaryjny)`;
             }
         }
+
+        async function startCallSession() {
+            let target = document.getElementById('target-name-input').value.trim().toLowerCase();
+            if (!target) return alert("Wpisz nazwę lub adres e-mail odbiorcy.");
+            if (!target.includes('@')) target += SUFFIX;
+
+            document.getElementById('default-view').style.display = 'none';
+            document.getElementById('meet-view').style.display = 'flex';
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('local-video').srcObject = localStream;
+            } catch (e) {
+                alert("Błąd dostępu do kamery/mikrofonu: " + e.message);
+                endCallSession();
+                return;
+            }
+
+            pc = new RTCPeerConnection(rtcConfig);
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            pc.ontrack = (event) => {
+                document.getElementById('remote-video').srcObject = event.streams[0];
+            };
+
+            console.log("Inicjalizacja połączenia ze stremowaniem do:", target);
+        }
+
+        function toggleAudio() {
+            if (localStream) {
+                const track = localStream.getAudioTracks()[0];
+                if (track) {
+                    track.enabled = !track.enabled;
+                    document.getElementById('mic-btn').style.background = track.enabled ? '#334155' : '#e74c3c';
+                }
+            }
+        }
+
+        function toggleVideo() {
+            if (localStream) {
+                const track = localStream.getVideoTracks()[0];
+                if (track) {
+                    track.enabled = !track.enabled;
+                    document.getElementById('cam-btn').style.background = track.enabled ? '#334155' : '#e74c3c';
+                }
+            }
+        }
+
+        function endCallSession() {
+            if (pc) pc.close();
+            if (localStream) localStream.getTracks().forEach(t => t.stop());
+            document.getElementById('meet-view').style.display = 'none';
+            document.getElementById('default-view').style.display = 'flex';
+        }
+    </script>
+</body>
+</html>
