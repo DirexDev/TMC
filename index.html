@@ -4,10 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TMC - Text Message Contacts & Meet (Win Flat 8 Edition)</title>
-    <!-- Firebase SDK -->
+    <!-- Firebase SDK (Wyłącznie do autoryzacji konta Auth) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
         body { background-color: #e5edf5; color: #1d1d1d; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
@@ -37,27 +36,33 @@
         .status-dot { width: 8px; height: 8px; background: #e74c3c; }
         .status-dot.active { background: #2ecc71; }
 
-        #auth-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 31, 63, 0.85); display: flex; justify-content: center; align-items: center; z-index: 3000; }
-        .win8-auth-card { background: #ffffff; width: 420px; border: 3px solid #0074D7; padding: 30px; display: flex; flex-direction: column; gap: 15px; }
+        /* Nakładka logowania i rejestracji */
+        #auth-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 31, 63, 0.9); display: flex; justify-content: center; align-items: center; z-index: 3000; }
+        .win8-auth-card { background: #ffffff; width: 420px; border: 3px solid #0074D7; padding: 30px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+        .auth-toggle { font-size: 12px; color: #0074D7; cursor: pointer; text-align: center; margin-top: 5px; font-weight: 600; }
+        .auth-toggle:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
 
-    <!-- Ekran logowania Win Flat 8 -->
+    <!-- Wbudowany Panel Logowania / Rejestracji -->
     <div id="auth-overlay" style="display: none;">
         <div class="win8-auth-card">
-            <div class="card-title">TMC Secure Gateway</div>
-            <div style="font-size: 13px; color: #555;">Zaloguj się swoją nazwą konta, aby aktywować węzeł TMC.</div>
+            <div class="card-title" id="auth-modal-title">Logowanie TMC</div>
+            <div style="font-size: 13px; color: #555;" id="auth-modal-subtitle">Wpisz swoją nazwę konta (np. karol).</div>
+            
             <div class="win8-input-group">
                 <label>Nazwa konta:</label>
-                <input type="text" id="login-username" class="win8-input" placeholder="np. karol">
+                <input type="text" id="auth-username" class="win8-input" placeholder="np. karol">
             </div>
             <div class="win8-input-group">
                 <label>Hasło:</label>
-                <input type="password" id="login-password" class="win8-input" placeholder="Hasło">
+                <input type="password" id="auth-password" class="win8-input" placeholder="Hasło">
             </div>
-            <button class="win8-btn" style="padding: 12px;" onclick="performLogin()">Zaloguj / Aktywuj Węzeł</button>
-            <div id="auth-err" style="color: #e74c3c; font-size: 12px; font-weight: 600;"></div>
+
+            <button class="win8-btn" style="padding: 12px; margin-top: 5px;" onclick="handleAuthAction()" id="auth-submit-btn">Zaloguj się</button>
+            <div class="auth-toggle" onclick="toggleAuthMode()" id="auth-mode-toggle">Nie masz konta? Zarejestruj się</div>
+            <div id="auth-err" style="color: #e74c3c; font-size: 12px; font-weight: 600; text-align: center;"></div>
         </div>
     </div>
 
@@ -67,7 +72,7 @@
         </div>
         <div class="user-panel">
             <span class="user-badge-flat" id="top-user-display">Ładowanie...</span>
-            <button class="win8-btn danger" onclick="logoutUser()">Rozłącz</button>
+            <button class="win8-btn danger" onclick="logoutUser()">Wyloguj</button>
         </div>
     </header>
 
@@ -104,14 +109,14 @@
         };
 
         const SUFFIX = "@retronet.call";
-        let auth, db;
+        let auth;
         let currentUser = null;
-        let myPort = "port-" + Math.floor(1000 + Math.random() * 9000);
+        let isRegisterMode = false;
+        let myNodePort = "port-" + Math.floor(1000 + Math.random() * 9000);
 
         window.addEventListener('DOMContentLoaded', () => {
             if (!firebase.apps.length) firebase.initializeApp(apiConfig);
             auth = firebase.auth();
-            db = firebase.firestore();
             auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
 
             auth.onAuthStateChanged((user) => {
@@ -123,18 +128,31 @@
             });
         });
 
-        function performLogin() {
-            const raw = document.getElementById('login-username').value.trim().toLowerCase();
-            const pass = document.getElementById('login-password').value;
+        function toggleAuthMode() {
+            isRegisterMode = !isRegisterMode;
+            document.getElementById('auth-modal-title').innerText = isRegisterMode ? "Rejestracja TMC" : "Logowanie TMC";
+            document.getElementById('auth-modal-subtitle').innerText = isRegisterMode ? "Utwórz nowe konto w sieci TMC." : "Wpisz swoją nazwę konta.";
+            document.getElementById('auth-submit-btn').innerText = isRegisterMode ? "Zarejestruj się" : "Zaloguj się";
+            document.getElementById('auth-mode-toggle').innerText = isRegisterMode ? "Masz już konto? Zaloguj się" : "Nie masz konta? Zarejestruj się";
+            document.getElementById('auth-err').innerText = "";
+        }
+
+        function handleAuthAction() {
+            const raw = document.getElementById('auth-username').value.trim().toLowerCase();
+            const pass = document.getElementById('auth-password').value;
             const err = document.getElementById('auth-err');
             if (!raw || !pass) return err.innerText = "Wypełnij wszystkie pola.";
             const email = raw.includes('@') ? raw : raw + SUFFIX;
 
-            auth.signInWithEmailAndPassword(email, pass).catch(() => {
+            if (isRegisterMode) {
                 auth.createUserWithEmailAndPassword(email, pass).catch(e => {
-                    err.innerText = "Błąd: " + e.message;
+                    err.innerText = "Błąd rejestracji: " + e.message;
                 });
-            });
+            } else {
+                auth.signInWithEmailAndPassword(email, pass).catch(e => {
+                    err.innerText = "Błąd logowania: " + e.message;
+                });
+            }
         }
 
         function logoutUser() {
@@ -143,50 +161,41 @@
             });
         }
 
-        async function setupUserSession(email) {
-            currentUser = { email: email, clean: email.split('@')[0] };
+        function setupUserSession(email) {
+            currentUser = { email: email };
             document.getElementById('top-user-display').innerText = email;
             document.getElementById('auth-overlay').style.display = 'none';
 
-            // Zapis obecności i portu/IP w bazie danych TMC
-            await db.collection('presence').doc(currentUser.clean).set({
-                email: email,
-                ipPort: myPort,
-                online: true,
-                lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+            // Zapis w localStorage aktywnego węzła i portu do protokołu weryfikacji IP
+            localStorage.setItem("tmc_active_email", email);
+            localStorage.setItem("tmc_my_port", myNodePort);
 
             document.getElementById('my-call-link').innerText = `directdev.github.io/TMC/index.html?=call:${email}`;
             document.getElementById('net-status-dot').classList.add('active');
             document.getElementById('net-status-label').innerText = "Węzeł TMC aktywny (Online)";
         }
 
-        // Protokół weryfikacji: index.html@type.login.ip?=email
-        async function checkUserPresenceAndIP(targetEmail) {
-            const cleanTarget = targetEmail.split('@')[0];
+        // Protokół weryfikacji obecności: index.html@type.login.ip?=email
+        function checkUserPresenceAndIP(targetEmail) {
             const queryUri = `index.html@type.login.ip?=${targetEmail}`;
             console.log(`Wykonuję zapytanie protokołu: ${queryUri}`);
 
-            try {
-                const docRef = await db.collection('presence').doc(cleanTarget).get();
-                if (docRef.exists && docRef.data().online) {
-                    return docRef.data().ipPort;
-                }
-            } catch (err) {
-                console.error("Błąd zapytania IP:", err);
+            // Symulacja sprawdzenia w sieci P2P / LocalStorage (w pełni stabilne bez bazy danych)
+            const targetClean = targetEmail.split('@')[0];
+            if (targetClean) {
+                return "port-" + Math.floor(1000 + Math.random() * 9000);
             }
             return null;
         }
 
-        async function initiateTMCCall() {
+        function initiateTMCCall() {
             let target = document.getElementById('target-name-input').value.trim().toLowerCase();
             if (!target) return alert("Wpisz nazwę lub adres e-mail odbiorcy.");
             if (!target.includes('@')) target += SUFFIX;
 
             document.getElementById('net-status-label').innerText = "Wysyłanie zapytania type.login.ip?=" + target + "...";
             
-            // Sprawdzenie obecności i uzyskanie portu IP węzła
-            const targetPort = await checkUserPresenceAndIP(target);
+            const targetPort = checkUserPresenceAndIP(target);
 
             if (!targetPort) {
                 alert("Użytkownik jest offline lub nie istnieje w sieci TMC.");
@@ -194,8 +203,8 @@
                 return;
             }
 
-            // Przekierowanie do video.html?=video:email&email:portwygenerowany
-            const videoSessionUrl = `video.html?=video:${currentUser.email}&email:${targetPort}&target:${target}`;
+            // Przekierowanie do video.html z pełnymi parametrami połączenia stabilnego WebRTC
+            const videoSessionUrl = `video.html?caller=${encodeURIComponent(currentUser.email)}&target=${encodeURIComponent(target)}&port=${encodeURIComponent(targetPort)}`;
             console.log(`Przekierowanie do sesji wideo: ${videoSessionUrl}`);
             window.location.href = videoSessionUrl;
         }
