@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TMC - Text Message Contacts & Meet (Win Flat 8 Edition)</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+        body { background-color: #e5edf5; color: #1d1d1d; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+        header { background: #001f3f; color: #ffffff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #0074D7; }
+        .header-brand { font-weight: 600; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+        
+        .user-panel { display: flex; align-items: center; gap: 15px; font-size: 13px; }
+        .user-badge-flat { background: #0074D7; color: white; padding: 6px 12px; font-weight: 600; }
+        .win8-btn { background: #2ecc71; border: none; color: white; padding: 8px 16px; cursor: pointer; font-weight: 600; transition: background 0.1s; }
+        .win8-btn:hover { background: #27ae60; }
+        .win8-btn.danger { background: #e74c3c; }
+        .win8-btn.danger:hover { background: #c0392b; }
+
+        .tmc-workspace { display: flex; flex: 1; overflow: hidden; background: #ffffff; padding: 20px; justify-content: center; align-items: center; }
+        
+        .call-card { background: #f0f4f8; border: 3px solid #0074D7; width: 480px; padding: 30px; display: flex; flex-direction: column; gap: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        .card-title { font-size: 20px; font-weight: 600; color: #001f3f; text-transform: uppercase; border-bottom: 2px solid #0074D7; padding-bottom: 8px; }
+
+        .win8-input-group { display: flex; flex-direction: column; gap: 6px; }
+        .win8-input-group label { font-size: 13px; font-weight: 600; color: #333; }
+        .win8-input { width: 100%; padding: 12px; border: 2px solid #7f8c8d; font-size: 15px; outline: none; background: #fff; }
+        .win8-input:focus { border-color: #0074D7; }
+
+        .status-box { background: #ffffff; border: 2px solid #b0c4de; padding: 12px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+        .status-row { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+        .status-dot { width: 8px; height: 8px; background: #e74c3c; }
+        .status-dot.active { background: #2ecc71; }
+
+        #auth-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 31, 63, 0.85); display: flex; justify-content: center; align-items: center; z-index: 3000; }
+        .win8-auth-card { background: #ffffff; width: 420px; border: 3px solid #0074D7; padding: 30px; display: flex; flex-direction: column; gap: 15px; }
+    </style>
+</head>
+<body>
+
+    <!-- Ekran logowania Win Flat 8 -->
+    <div id="auth-overlay" style="display: none;">
+        <div class="win8-auth-card">
+            <div class="card-title">TMC Secure Gateway</div>
+            <div style="font-size: 13px; color: #555;">Zaloguj się swoją nazwą konta, aby aktywować węzeł TMC.</div>
+            <div class="win8-input-group">
+                <label>Nazwa konta:</label>
+                <input type="text" id="login-username" class="win8-input" placeholder="np. karol">
+            </div>
+            <div class="win8-input-group">
+                <label>Hasło:</label>
+                <input type="password" id="login-password" class="win8-input" placeholder="Hasło">
+            </div>
+            <button class="win8-btn" style="padding: 12px;" onclick="performLogin()">Zaloguj / Aktywuj Węzeł</button>
+            <div id="auth-err" style="color: #e74c3c; font-size: 12px; font-weight: 600;"></div>
+        </div>
+    </div>
+
+    <header>
+        <div class="header-brand">
+            <span>TMC (Text Message Contacts & Meet)</span>
+        </div>
+        <div class="user-panel">
+            <span class="user-badge-flat" id="top-user-display">Ładowanie...</span>
+            <button class="win8-btn danger" onclick="logoutUser()">Rozłącz</button>
+        </div>
+    </header>
+
+    <div class="tmc-workspace">
+        <div class="call-card">
+            <div class="card-title">Rozpocznij Strumień Wideo</div>
+            
+            <div class="status-box">
+                <div class="status-row">
+                    <div class="status-dot" id="net-status-dot"></div>
+                    <span id="net-status-label">Inicjalizacja węzła sieciowego...</span>
+                </div>
+                <div>Twój link wywołania:</div>
+                <div id="my-call-link" style="font-family: monospace; font-size: 11px; color: #0074D7; word-break: break-all; background: #fff; padding: 6px; border: 1px solid #ccc;">...</div>
+            </div>
+
+            <div class="win8-input-group">
+                <label>Wprowadź nazwę lub e-mail odbiorcy:</label>
+                <input type="text" id="target-name-input" class="win8-input" placeholder="np. karol lub karol@retronet.call">
+            </div>
+
+            <button class="win8-btn" onclick="initiateTMCCall()" style="padding: 14px; font-size: 15px;">Połącz z Użytkownikiem</button>
+        </div>
+    </div>
+
+    <script>
+        const apiConfig = {
+            apiKey: "AIzaSyB7Q9TSXa4CQc2nSiUhS044wD463jBHpr0",
+            authDomain: "retronetcall.firebaseapp.com",
+            projectId: "retronetcall",
+            storageBucket: "retronetcall.firebasestorage.app",
+            messagingSenderId: "820407833858",
+            appId: "1:820407833858:web:e4e1cc71f364955b3bde1b"
+        };
+
+        const SUFFIX = "@retronet.call";
+        let auth, db;
+        let currentUser = null;
+        let myPort = "port-" + Math.floor(1000 + Math.random() * 9000);
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!firebase.apps.length) firebase.initializeApp(apiConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+            auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+
+            auth.onAuthStateChanged((user) => {
+                if (user) {
+                    setupUserSession(user.email);
+                } else {
+                    document.getElementById('auth-overlay').style.display = 'flex';
+                }
+            });
+        });
+
+        function performLogin() {
+            const raw = document.getElementById('login-username').value.trim().toLowerCase();
+            const pass = document.getElementById('login-password').value;
+            const err = document.getElementById('auth-err');
+            if (!raw || !pass) return err.innerText = "Wypełnij wszystkie pola.";
+            const email = raw.includes('@') ? raw : raw + SUFFIX;
+
+            auth.signInWithEmailAndPassword(email, pass).catch(() => {
+                auth.createUserWithEmailAndPassword(email, pass).catch(e => {
+                    err.innerText = "Błąd: " + e.message;
+                });
+            });
+        }
+
+        function logoutUser() {
+            auth.signOut().then(() => {
+                document.getElementById('auth-overlay').style.display = 'flex';
+            });
+        }
+
+        async function setupUserSession(email) {
+            currentUser = { email: email, clean: email.split('@')[0] };
+            document.getElementById('top-user-display').innerText = email;
+            document.getElementById('auth-overlay').style.display = 'none';
+
+            // Zapis obecności i portu/IP w bazie danych TMC
+            await db.collection('presence').doc(currentUser.clean).set({
+                email: email,
+                ipPort: myPort,
+                online: true,
+                lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            document.getElementById('my-call-link').innerText = `directdev.github.io/TMC/index.html?=call:${email}`;
+            document.getElementById('net-status-dot').classList.add('active');
+            document.getElementById('net-status-label').innerText = "Węzeł TMC aktywny (Online)";
+        }
+
+        // Protokół weryfikacji: index.html@type.login.ip?=email
+        async function checkUserPresenceAndIP(targetEmail) {
+            const cleanTarget = targetEmail.split('@')[0];
+            const queryUri = `index.html@type.login.ip?=${targetEmail}`;
+            console.log(`Wykonuję zapytanie protokołu: ${queryUri}`);
+
+            try {
+                const docRef = await db.collection('presence').doc(cleanTarget).get();
+                if (docRef.exists && docRef.data().online) {
+                    return docRef.data().ipPort;
+                }
+            } catch (err) {
+                console.error("Błąd zapytania IP:", err);
+            }
+            return null;
+        }
+
+        async function initiateTMCCall() {
+            let target = document.getElementById('target-name-input').value.trim().toLowerCase();
+            if (!target) return alert("Wpisz nazwę lub adres e-mail odbiorcy.");
+            if (!target.includes('@')) target += SUFFIX;
+
+            document.getElementById('net-status-label').innerText = "Wysyłanie zapytania type.login.ip?=" + target + "...";
+            
+            // Sprawdzenie obecności i uzyskanie portu IP węzła
+            const targetPort = await checkUserPresenceAndIP(target);
+
+            if (!targetPort) {
+                alert("Użytkownik jest offline lub nie istnieje w sieci TMC.");
+                document.getElementById('net-status-label').innerText = "Węzeł TMC aktywny (Online)";
+                return;
+            }
+
+            // Przekierowanie do video.html?=video:email&email:portwygenerowany
+            const videoSessionUrl = `video.html?=video:${currentUser.email}&email:${targetPort}&target:${target}`;
+            console.log(`Przekierowanie do sesji wideo: ${videoSessionUrl}`);
+            window.location.href = videoSessionUrl;
+        }
+    </script>
+</body>
+</html>
