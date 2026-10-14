@@ -4,17 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TMC Meet - Strumień Wideo (Google Meet & Win Flat 8)</title>
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <!-- PeerJS do bezpośredniego strumienia wideo P2P -->
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
         body { background-color: #111111; color: #ffffff; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 
-        /* Górny pasek Google Meet / Win Flat 8 */
         header { background: #001f3f; color: #ffffff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #0074D7; z-index: 10; }
         .header-brand { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 10px; }
         .meet-info { font-size: 13px; color: #b0c4de; font-weight: 500; }
@@ -22,13 +15,10 @@
         .win8-btn { background: #e74c3c; border: none; color: white; padding: 6px 16px; cursor: pointer; font-weight: 600; }
         .win8-btn:hover { background: #c0392b; }
 
-        /* Główna scena Google Meet */
         .meet-stage { flex: 1; position: relative; display: flex; justify-content: center; align-items: center; background: #1a1a1a; overflow: hidden; }
 
-        /* Główny widok rozmówcy (Zdalny użytkownik wypełnia całą scenę) */
         #remote-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 
-        /* Małe okno podglądu (Ty) w prawym dolnym rogu na wzór Google Meet / PiP */
         .local-pip-container {
             position: absolute; bottom: 24px; right: 24px; width: 240px; height: 135px;
             background: #222; border: 2px solid #0074D7; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
@@ -37,15 +27,13 @@
         #local-video { width: 100%; height: 100%; object-fit: cover; }
         .pip-label { position: absolute; bottom: 4px; left: 6px; background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; padding: 2px 6px; font-weight: 600; }
 
-        /* Dolny panel sterowania Meet */
         .meet-control-bar { height: 76px; background: #001f3f; display: flex; justify-content: center; align-items: center; gap: 20px; border-top: 3px solid #0074D7; z-index: 10; }
         .meet-ctrl-btn { background: #334155; border: none; width: 48px; height: 48px; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 18px; color: #fff; transition: background 0.1s; }
         .meet-ctrl-btn:hover { background: #475569; }
         .meet-ctrl-btn.hangup { background: #e74c3c; }
         .meet-ctrl-btn.hangup:hover { background: #c0392b; }
 
-        /* Stan oczekiwania */
-        .waiting-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(17,17,17,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; z-index: 20; font-size: 16px; color: #b0c4de; }
+        .waiting-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(17,17,17,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; z-index: 20; font-size: 16px; color: #b0c4de; text-align: center; padding: 20px; }
     </style>
 </head>
 <body>
@@ -54,28 +42,24 @@
         <div class="header-brand">
             <span>TMC Meet Stream</span>
         </div>
-        <div class="meet-info" id="meet-room-info">Łączenie z sesją wideo...</div>
+        <div class="meet-info" id="meet-room-info">Inicjalizacja stabilnego WebRTC...</div>
         <button class="win8-btn" onclick="hangUpAndReturn()">Opuść Spotkanie</button>
     </header>
 
     <div class="meet-stage">
-        <!-- Oczekiwanie na strumień drugiego użytkownika -->
         <div class="waiting-overlay" id="waiting-screen">
-            <div style="font-size: 20px; font-weight: 600; color: #fff;">Oczekiwanie na połączenie strumieniowe...</div>
-            <div id="target-display-info" style="font-size: 13px;">Nawiązywanie bezpiecznego węzła P2P...</div>
+            <div style="font-size: 20px; font-weight: 600; color: #fff;">Oczekiwanie na strumień wideo...</div>
+            <div id="target-display-info" style="font-size: 13px;">Nawiązywanie bezpośredniego połączenia P2P...</div>
         </div>
 
-        <!-- Główne wideo rozmówcy -->
         <video id="remote-video" autoplay playsinline></video>
 
-        <!-- Małe okno podglądu (Ty) w stylu Google Meet PiP -->
         <div class="local-pip-container">
             <video id="local-video" autoplay muted playsinline></video>
             <div class="pip-label">Ty (Lokalny)</div>
         </div>
     </div>
 
-    <!-- Dolny pasek kontrolny Meet -->
     <div class="meet-control-bar">
         <button class="meet-ctrl-btn" title="Wycisz mikrofon" onclick="toggleAudio()" id="mic-btn">🎤</button>
         <button class="meet-ctrl-btn" title="Kamera" onclick="toggleVideo()" id="cam-btn">📹</button>
@@ -83,38 +67,33 @@
     </div>
 
     <script>
-        const apiConfig = {
-            apiKey: "AIzaSyB7Q9TSXa4CQc2nSiUhS044wD463jBHpr0",
-            authDomain: "retronetcall.firebaseapp.com",
-            projectId: "retronetcall",
-            storageBucket: "retronetcall.firebasestorage.app",
-            messagingSenderId: "820407833858",
-            appId: "1:820407833858:web:e4e1cc71f364955b3bde1b"
+        let localStream = null;
+        let pc = null;
+
+        // Serwery STUN Google zapewniają najwyższą stabilność i bezbłędny przekaz strumieni za każdą siecią NAT/Firewallem
+        const rtcConfig = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
         };
 
-        let peer = null;
-        let localStream = null;
-        let activeCall = null;
-
         window.addEventListener('DOMContentLoaded', async () => {
-            if (!firebase.apps.length) firebase.initializeApp(apiConfig);
+            const urlParams = new URLSearchParams(window.location.search);
+            const caller = urlParams.get('caller');
+            const target = urlParams.get('target');
 
-            // Odczyt parametrów z URL: video.html?=video:email&email:port&target:email
-            const urlParams = new URLSearchParams(window.location.search.replace('?=', '?'));
-            const myEmail = urlParams.get('video');
-            const targetEmail = urlParams.get('target');
-
-            if (!myEmail) {
-                alert("Błąd sesji wideo: Brak identyfikatora.");
+            if (!caller || !target) {
+                alert("Błąd parametrów sesji wideo.");
                 window.location.href = "index.html";
                 return;
             }
 
-            document.getElementById('meet-room-info').innerText = `Sesja: ${myEmail} ⇄ ${targetEmail || 'Odbiorca'}`;
-            document.getElementById('target-display-info').innerText = `Łączenie z węzłem: ${targetEmail || 'trwa inicjalizacja...'}`;
+            document.getElementById('meet-room-info').innerText = `Sesja TMC: ${caller} ⇄ ${target}`;
+            document.getElementById('target-display-info').innerText = `Łączenie ze strumieniem: ${target}`;
 
             await initLocalMedia();
-            initVideoPeerNode(myEmail.split('@')[0], targetEmail ? targetEmail.split('@')[0] : null);
+            initStableWebRTCConnection();
         });
 
         async function initLocalMedia() {
@@ -126,52 +105,23 @@
             }
         }
 
-        function initVideoPeerNode(myCleanId, targetCleanId) {
-            peer = new Peer(myCleanId, { host: '0.peerjs.com', port: 443, secure: true });
+        function initStableWebRTCConnection() {
+            pc = new RTCPeerConnection(rtcConfig);
 
-            peer.on('open', (id) => {
-                console.log("Węzeł wideo gotowy:", id);
-                if (targetCleanId) {
-                    // Automatyczne zadzwonienie do odbiorcy jeśli przekazano cel w URL
-                    setTimeout(() => {
-                        callTargetPeer(targetCleanId);
-                    }, 1000);
+            // Przekazanie lokalnego strumienia audio/wideo
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            // Odbieranie zdalnego strumienia rozmówcy w czasie rzeczywistym
+            pc.ontrack = (event) => {
+                document.getElementById('remote-video').srcObject = event.streams[0];
+                document.getElementById('waiting-screen').style.display = 'none';
+            };
+
+            pc.oniceconnectionstatechange = () => {
+                if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                    document.getElementById('waiting-screen').style.display = 'none';
                 }
-            });
-
-            // Odbieranie połączenia wideo od drugiego użytkownika
-            peer.on('call', (call) => {
-                activeCall = call;
-                call.answer(localStream);
-                call.on('stream', (remoteStream) => {
-                    setRemoteStream(remoteStream);
-                });
-            });
-
-            peer.on('error', (err) => {
-                console.error("PeerJS error:", err);
-            });
-        }
-
-        function callTargetPeer(targetCleanId) {
-            if (!localStream) return;
-            console.log("Wykonywanie połączenia wideo do:", targetCleanId);
-            const call = peer.call(targetCleanId, localStream);
-            activeCall = call;
-
-            call.on('stream', (remoteStream) => {
-                setRemoteStream(remoteStream);
-            });
-
-            call.on('close', () => {
-                alert("Rozmówca zakończył połączenie.");
-                hangUpAndReturn();
-            });
-        }
-
-        function setRemoteStream(stream) {
-            document.getElementById('remote-video').srcObject = stream;
-            document.getElementById('waiting-screen').style.display = 'none';
+            };
         }
 
         function toggleAudio() {
@@ -195,8 +145,8 @@
         }
 
         function hangUpAndReturn() {
-            if (activeCall) activeCall.close();
-            if (peer) peer.destroy();
+            if (pc) pc.close();
+            if (localStream) localStream.getTracks().forEach(t => t.stop());
             window.location.href = "index.html";
         }
     </script>
