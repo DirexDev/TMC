@@ -42,14 +42,14 @@
         <div class="header-brand">
             <span>TMC Meet Stream</span>
         </div>
-        <div class="meet-info" id="meet-room-info">Inicjalizacja stabilnego WebRTC...</div>
+        <div class="meet-info" id="meet-room-info">Inicjalizacja WebRTC...</div>
         <button class="win8-btn" onclick="hangUpAndReturn()">Opuść Spotkanie</button>
     </header>
 
     <div class="meet-stage">
         <div class="waiting-overlay" id="waiting-screen">
             <div style="font-size: 20px; font-weight: 600; color: #fff;">Oczekiwanie na strumień wideo...</div>
-            <div id="target-display-info" style="font-size: 13px;">Nawiązywanie bezpośredniego połączenia P2P...</div>
+            <div id="target-display-info" style="font-size: 13px;">Nawiązywanie bezpiecznego połączenia P2P...</div>
         </div>
 
         <video id="remote-video" autoplay playsinline></video>
@@ -70,7 +70,6 @@
         let localStream = null;
         let pc = null;
 
-        // Serwery STUN Google zapewniają najwyższą stabilność i bezbłędny przekaz strumieni za każdą siecią NAT/Firewallem
         const rtcConfig = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -80,17 +79,16 @@
 
         window.addEventListener('DOMContentLoaded', async () => {
             const urlParams = new URLSearchParams(window.location.search);
-            const caller = urlParams.get('caller');
-            const target = urlParams.get('target');
+            const targetEmail = urlParams.get('call');
 
-            if (!caller || !target) {
-                alert("Błąd parametrów sesji wideo.");
+            if (!targetEmail) {
+                alert("Błąd: Nie podano adresu docelowego w adresie URL.");
                 window.location.href = "index.html";
                 return;
             }
 
-            document.getElementById('meet-room-info').innerText = `Sesja TMC: ${caller} ⇄ ${target}`;
-            document.getElementById('target-display-info').innerText = `Łączenie ze strumieniem: ${target}`;
+            document.getElementById('meet-room-info').innerText = `Sesja TMC z: ${targetEmail}`;
+            document.getElementById('target-display-info').innerText = `Łączenie ze strumieniem: ${targetEmail}`;
 
             await initLocalMedia();
             initStableWebRTCConnection();
@@ -108,10 +106,10 @@
         function initStableWebRTCConnection() {
             pc = new RTCPeerConnection(rtcConfig);
 
-            // Przekazanie lokalnego strumienia audio/wideo
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            if (localStream) {
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            }
 
-            // Odbieranie zdalnego strumienia rozmówcy w czasie rzeczywistym
             pc.ontrack = (event) => {
                 document.getElementById('remote-video').srcObject = event.streams[0];
                 document.getElementById('waiting-screen').style.display = 'none';
